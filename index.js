@@ -1,6 +1,7 @@
 /*global Buffer require exports console setTimeout */
 
 var net = require("net"),
+    tls = require("tls"),
     util = require("./lib/util"),
     Queue = require("./lib/queue"),
     to_array = require("./lib/to_array"),
@@ -94,7 +95,8 @@ exports.RedisClient = RedisClient;
 RedisClient.prototype.install_stream_listeners = function() {
     var self = this;
 
-    this.stream.on("connect", function () {
+    var connect_event = options.tls ? "secureConnect" : "connect";
+    this.stream.on(connect_event, function () {
         self.on_connect();
     });
 
@@ -1233,8 +1235,12 @@ exports.createClient = function(arg0, arg1, arg2){
 
     } else if( arg0 !== null && typeof arg0 === 'object' ){
 
-        // createClient(options)
-        return createClient_tcp(default_port, default_host, arg0 );
+		if(arg0.tls) {
+    	    return createClient_tls(default_port, default_host, arg0 );
+		} else {
+	        // createClient(options)
+    	    return createClient_tcp(default_port, default_host, arg0 );
+		}
 
     } else if( arg0 === null && arg1 === null ){
 
@@ -1268,6 +1274,26 @@ var createClient_tcp = function (port_arg, host_arg, options) {
     };
     var net_client = net.createConnection(cnxOptions);
     var redis_client = new RedisClient(net_client, options || {});
+
+    redis_client.connectionOption = cnxOptions;
+    redis_client.address = cnxOptions.host + ':' + cnxOptions.port;
+
+    return redis_client;
+};
+
+var createClient_tls = function (port_arg, host_arg, options) {
+    var cnxOptions = {
+        'port' : port_arg || default_port,
+        'host' : host_arg || default_host,
+        'family' : (options && options.family === 'IPv6') ? 6 : 4
+    };
+    var net_client = net.createConnection(cnxOptions);
+    var tls_options = {socket: net_client};
+    for(var opt in options.tls) {
+    	tls_options[opt] = options.tls[opt];
+    }
+    var tls_client = tls.connect(port, host, options.tls);
+    var redis_client = new RedisClient(tls_client, options || {});
 
     redis_client.connectionOption = cnxOptions;
     redis_client.address = cnxOptions.host + ':' + cnxOptions.port;
