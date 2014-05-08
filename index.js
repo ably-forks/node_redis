@@ -79,6 +79,7 @@ function RedisClient(stream, options) {
     }
     this.parser_module = null;
     this.selected_db = null;	// save the selected db here, used when reconnecting
+    this.client_name = null;	// save the client name here, used when reconnecting
 
     this.old_state = null;
 
@@ -348,10 +349,19 @@ RedisClient.prototype.on_ready = function () {
         this.monitoring = this.old_state.monitoring;
         this.pub_sub_mode = this.old_state.pub_sub_mode;
         this.selected_db = this.old_state.selected_db;
+        this.client_name = this.old_state.client_name;
         this.old_state = null;
     }
 
     // magically restore any modal commands from a previous connection
+    if (this.client_name !== null) {
+        // this trick works if and only if the following send_command
+        // never goes into the offline queue
+        var pub_sub_mode = this.pub_sub_mode;
+        this.pub_sub_mode = false;
+        this.send_command('client', ['setname', this.client_name]);
+        this.pub_sub_mode = pub_sub_mode;
+    }
     if (this.selected_db !== null) {
         // this trick works if and only if the following send_command
         // never goes into the offline queue
@@ -480,12 +490,14 @@ RedisClient.prototype.connection_gone = function (why) {
         var state = {
             monitoring: this.monitoring,
             pub_sub_mode: this.pub_sub_mode,
-            selected_db: this.selected_db
+            selected_db: this.selected_db,
+            client_name: this.client_name
         };
         this.old_state = state;
         this.monitoring = false;
         this.pub_sub_mode = false;
-        this.selected_db = null;
+		this.selected_db = null;
+		this.client_name = null;
     }
 
     // since we are collapsing end and close, users don't expect to be called twice
@@ -1013,6 +1025,21 @@ RedisClient.prototype.select = function (db, callback) {
     });
 };
 RedisClient.prototype.SELECT = RedisClient.prototype.select;
+
+// store client name in this.client_name to restore it on reconnect
+RedisClient.prototype.client_setname = function (name, callback) {
+    var self = this;
+
+    this.send_command('client', ['setname', name], function (err, res) {
+        if (err === null) {
+            self.client_name = name;
+        }
+        if (typeof(callback) === 'function') {
+            callback(err, res);
+        }
+    });
+};
+RedisClient.prototype.CLIENT_SETNAME = RedisClient.prototype.client_setname;
 
 // Stash auth for connect and reconnect.  Send immediately if already connected.
 RedisClient.prototype.auth = function () {
