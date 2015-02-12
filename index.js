@@ -116,9 +116,9 @@ RedisClient.prototype.create_stream = function() {
     }
 
     if(tlsOptions) {
-	    stream = tls.connect(options);
+	    stream = tls.connect(connectionOptions);
     } else {
-	    stream = net.createConnection(options);
+	    stream = net.createConnection(connectionOptions);
 	}
 	return stream;
 };
