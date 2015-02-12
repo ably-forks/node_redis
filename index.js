@@ -102,7 +102,7 @@ RedisClient.prototype.reconnect = function() {
         this.stream.destroy();
         this.stream.removeAllListeners();
         this.stream = tls.connect(this.port, this.host, options.tls);
-        this.bind_to_stream();
+        this.install_stream_listeners();
     } else {
         this.stream.connect(this.port, this.host);
     }
