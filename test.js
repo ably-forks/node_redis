@@ -719,7 +719,6 @@ tests.WATCH_TRANSACTION = function () {
     });
 };
 
-
 tests.detect_buffers = function () {
     var name = "detect_buffers", detect_client = redis.createClient({detect_buffers: true});
 
@@ -2236,10 +2235,11 @@ tests.tls = function () {
 
     // wait to stunnel to start
     stunnel.stderr.on("data", function(data) {
-        if(data.toString().indexOf("Service redis bound") > -1) {
+        if(data.toString().match(/Service.+redis.+bound/)) {
             // the test cert is self-signed with a CN of "localhost"
             var tls_options = {
                 servername: "localhost",
+                rejectUnauthorized: false,
                 ca: [ fs.readFileSync(resolve(__dirname, "./test_assets/server.crt")) ]
             };
             var tls_client = redis.createClient(TLS_PORT, HOST, { tls: tls_options });
@@ -2247,9 +2247,9 @@ tests.tls = function () {
                 tls_client.set("foo", "bar", require_string("OK", name));
                 tls_client.get("foo", function (err, result) {
                     require_string("bar", name)(err, result);
-                    stunnel.kill();
                     tls_client.quit();
-                    next(name);
+                    stunnel.kill();
+                    setTimeout(function() {next(name);}, 1000);
                 });
             });
         }
@@ -2280,10 +2280,11 @@ tests.tlsReconnect = function() {
 
 	// wait to stunnel to start
 	stunnel.stderr.on("data", function(data) {
-		if(data.toString().indexOf("Service redis bound") > -1) {
+        if(data.toString().match(/Service.+redis.+bound/)) {
 			// the test cert is self-signed with a CN of "localhost"
 			var tls_options = {
-				servername: "localhost",
+                servername: "localhost",
+                rejectUnauthorized: false,
 				ca: [ fs.readFileSync(resolve(__dirname, "./test_assets/server.crt")) ]
 			};
 			var client = redis.createClient(TLS_PORT, HOST, {
