@@ -34,8 +34,8 @@ try {
 parsers.push(require("./lib/parser/javascript"));
 
 function RedisClient(stream, options) {
-    this.stream = stream;
     this.options = options = options || {};
+    this.stream = stream || this.create_stream();
 
     this.connection_id = ++connection_id;
     this.connected = false;
@@ -93,19 +93,41 @@ function RedisClient(stream, options) {
 util.inherits(RedisClient, events.EventEmitter);
 exports.RedisClient = RedisClient;
 
-RedisClient.prototype.reconnect = function() {
-    var options = this.options;
+RedisClient.prototype.create_stream = function() {
+    var options = this.options,
+        connectionOptions = this.connectionOptions,
+        tlsOptions = options.tls;
 
-    if(options && options.tls) {
-        // We cannot simply reconnect the existing stream instance,
-        // so it needs to be recreated
-        this.stream.destroy();
-        this.stream.removeAllListeners();
-        this.stream = tls.connect(this.port, this.host, options.tls);
-        this.install_stream_listeners();
-    } else {
-        this.stream.connect(this.port, this.host);
+    if(!connectionOptions) {
+        connectionOptions = this.connectionOptions = {};
+        if(options.path) {
+            this.address = connectionOptions.path = options.path;
+        } else {
+            connectionOptions.port = options.port || default_port;
+            connectionOptions.host = options.host || default_host;
+            connectionOptions.family = (options.family === 'IPv6') ? 6 : 4;
+            if(tlsOptions) {
+                for(var opt in tlsOptions) {
+                    connectionOptions[opt] = tlsOptions[opt];
+                }
+            }
+            this.address = connectionOptions.host + ':' + connectionOptions.port;
+        }
     }
+
+    if(tlsOptions) {
+	    stream = tls.connect(options);
+    } else {
+	    stream = net.createConnection(options);
+	}
+	return stream;
+};
+
+RedisClient.prototype.reconnect = function() {
+    this.stream.removeAllListeners();
+    this.stream.destroy();
+    this.stream = this.create_stream();
+    this.install_stream_listeners();
 };
 
 // Attach event listeners to the current stream
@@ -198,7 +220,6 @@ RedisClient.prototype.flush_and_error = function (message) {
 
 RedisClient.prototype.on_error = function (msg) {
     var message = "Redis connection to " + this.address + " failed - " + msg;
-
     if (this.closing) {
         return;
     }
@@ -1259,92 +1280,39 @@ RedisClient.prototype.eval = RedisClient.prototype.EVAL = function () {
 
 exports.createClient = function(arg0, arg1, arg2){
     if( arguments.length === 0 ){
-
         // createClient()
-        return createClient_tcp(default_port, default_host, {});
+        return new RedisClient();
+    }
 
-    } else if( typeof arg0 === 'number' ||
-        typeof arg0 === 'string' && arg0.match(/^\d+$/) ){
-
+    if( typeof arg0 === 'number' || typeof arg0 === 'string' && arg0.match(/^\d+$/) ){
         // createClient( 3000, host, options)
         // createClient('3000', host, options)
-        return createClient_tcp(arg0, arg1, arg2);
+        arg2 = arg2 || {};
+        arg2.port = Number(arg0);
+        arg2.host = arg1;
+        return new RedisClient(null, arg2);
+    }
 
-    } else if( typeof arg0 === 'string' ){
-
+    if( typeof arg0 === 'string' ){
         // createClient( '/tmp/redis.sock', options)
-        return createClient_unix(arg0,arg1);
+        arg1 = arg1 || {};
+        arg1.path = arg0;
+        return new RedisClient(null, arg1);
+    }
 
-    } else if( arg0 !== null && typeof arg0 === 'object' ){
+    if( arg0 !== null && typeof arg0 === 'object' ){
+        // createClient( options)
+         return new RedisClient(null, arg0);
+    }
 
-        var port = arg0.port || default_port,
-            host = arg0.host || default_host;
-
-        if(arg0.tls) {
-            return createClient_tls(port, host, arg0 );
-        } else {
-            // createClient(options)
-            return createClient_tcp(port, host, arg0 );
-        }
-
-    } else if( arg0 === null && arg1 === null ){
-
+    if( arg0 === null && arg1 === null ){
         // for backward compatibility
         // createClient(null,null,options)
-        return createClient_tcp(default_port, default_host, arg2);
-
-    } else {
-        throw new Error('unknown type of connection in createClient()');
+        return new RedisClient(null, arg2);
     }
+
+    throw new Error('unknown type of connection in createClient()');
 }
-
-var createClient_unix = function(path, options){
-    var cnxOptions = {
-        path: path
-    };
-    var net_client = net.createConnection(cnxOptions);
-    var redis_client = new RedisClient(net_client, options || {});
-
-    redis_client.connectionOption = cnxOptions;
-    redis_client.address = path;
-
-    return redis_client;
-}
-
-var createClient_tcp = function (port_arg, host_arg, options) {
-    var cnxOptions = {
-        'port' : port_arg || default_port,
-        'host' : host_arg || default_host,
-        'family' : (options && options.family === 'IPv6') ? 6 : 4
-    };
-    var net_client = net.createConnection(cnxOptions);
-    var redis_client = new RedisClient(net_client, options || {});
-
-    redis_client.connectionOption = cnxOptions;
-    redis_client.address = cnxOptions.host + ':' + cnxOptions.port;
-
-    return redis_client;
-};
-
-var createClient_tls = function (port_arg, host_arg, options) {
-    var cnxOptions = {
-        'port' : port_arg,
-        'host' : host_arg,
-        'family' : (options && options.family === 'IPv6') ? 6 : 4
-    };
-    var net_client = net.createConnection(cnxOptions);
-    var tls_options = {socket: net_client};
-    for(var opt in options.tls) {
-        tls_options[opt] = options.tls[opt];
-    }
-    var tls_client = tls.connect(port, host, options.tls);
-    var redis_client = new RedisClient(tls_client, options);
-
-    redis_client.connectionOption = cnxOptions;
-    redis_client.address = cnxOptions.host + ':' + cnxOptions.port;
-
-    return redis_client;
-};
 
 exports.print = function (err, reply) {
     if (err) {
