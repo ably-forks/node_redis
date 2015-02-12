@@ -503,8 +503,8 @@ RedisClient.prototype.connection_gone = function (why) {
         this.old_state = state;
         this.monitoring = false;
         this.pub_sub_mode = false;
-		this.selected_db = null;
-		this.client_name = null;
+        this.selected_db = null;
+        this.client_name = null;
     }
 
     // since we are collapsing end and close, users don't expect to be called twice
@@ -1277,12 +1277,15 @@ exports.createClient = function(arg0, arg1, arg2){
 
     } else if( arg0 !== null && typeof arg0 === 'object' ){
 
-		if(arg0.tls) {
-    	    return createClient_tls(default_port, default_host, arg0 );
-		} else {
-	        // createClient(options)
-    	    return createClient_tcp(default_port, default_host, arg0 );
-		}
+        var port = arg0.port || default_port,
+            host = arg0.host || default_host;
+
+        if(arg0.tls) {
+            return createClient_tls(port, host, arg0 );
+        } else {
+            // createClient(options)
+            return createClient_tcp(port, host, arg0 );
+        }
 
     } else if( arg0 === null && arg1 === null ){
 
@@ -1325,17 +1328,17 @@ var createClient_tcp = function (port_arg, host_arg, options) {
 
 var createClient_tls = function (port_arg, host_arg, options) {
     var cnxOptions = {
-        'port' : port_arg || default_port,
-        'host' : host_arg || default_host,
+        'port' : port_arg,
+        'host' : host_arg,
         'family' : (options && options.family === 'IPv6') ? 6 : 4
     };
     var net_client = net.createConnection(cnxOptions);
     var tls_options = {socket: net_client};
     for(var opt in options.tls) {
-    	tls_options[opt] = options.tls[opt];
+        tls_options[opt] = options.tls[opt];
     }
     var tls_client = tls.connect(port, host, options.tls);
-    var redis_client = new RedisClient(tls_client, options || {});
+    var redis_client = new RedisClient(tls_client, options);
 
     redis_client.connectionOption = cnxOptions;
     redis_client.address = cnxOptions.host + ':' + cnxOptions.port;
