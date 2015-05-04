@@ -147,6 +147,10 @@ RedisClient.prototype.install_stream_listeners = function() {
         self.on_error(msg.message);
     });
 
+    this.stream.on("clientError", function (msg) {
+        self.on_error(msg.message);
+    });
+
     this.stream.on("close", function () {
         self.connection_gone("close");
     });
